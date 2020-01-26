@@ -82,12 +82,21 @@ let rec lem_ex6b s = match s with
       lem_concat_length (reverse x) (Cons a Empty);
       lem_ex6b x
 
+(******
+ Exercise 6: Swap function
+ ******)
+
 val swap : string -> string
 let rec swap = function
  | Empty -> Empty
  | Cons a Empty -> Cons a Empty
  | Cons a (Cons b x) -> Cons b (Cons a (swap x))
 
+(* Lemma 10(c): Prove that swap(reverse(w)) == reverse(swap(w)) *)
+(* As the hint in the book suggests, this will involve several inductive definitions, including length and swap. *)
+val lem_ex10c : (w:string) -> Lemma (requires ((length w) % 2 = 0)) (ensures swap (reverse w) == reverse (swap w))
+
+(* First prove a simpler lemma about swap and concatenation *)
 val lem_ex10c_help (u:string) (v:string) : Lemma 
                     (requires length u % 2 = 0 /\ length v % 2 = 0)
                     (ensures swap (u `concat` v) == swap u `concat` swap v)
@@ -96,8 +105,6 @@ let rec lem_ex10c_help u v = match u with
   | Cons a Empty -> ()
   | Cons a (Cons b x) -> lem_ex10c_help x v
 
-(* Lemma 10(c): Prove that swap(reverse(w)) == reverse(swap(w)) *)
-val lem_ex10c : (w:string) -> Lemma (requires ((length w) % 2 = 0)) (ensures swap (reverse w) == reverse (swap w))
 let rec lem_ex10c w = match w with
    | Empty -> ()
    | Cons a Empty -> ()
@@ -106,10 +113,27 @@ let rec lem_ex10c w = match w with
        assert (length x % 2 = 0);
        let ab = Cons a (Cons b Empty) in
        let ba = Cons b (Cons a Empty) in
+       (* Proof proceeds by calculating:
+           swap(reverse(ab ++ x)) == swap(reverse x ++ ba)
+                                  == swap(reverse x) ++ ab
+                                  == reverse(swap x) ++ ab
+                                  == reverse(ba ++ swap x)
+                                  == reverse(swap(ab ++ x))
+           
+        *)
+       let s1 = swap (reverse w) in
+
        reverseLemma ab x;                 (* reverse <-> concat *)
-       reverseLemma ba (swap x);          (* reverse <-> concat *)
-       lem_ex6b x;                        (* length of reverse - necessary for next line *)
+       assert (s1 == swap(reverse x `concat` ba));
+
+       lem_ex6b x;                        (* length <--> reverse: necessary for next line *)
        lem_ex10c_help (reverse x) ba;     (* concat <--> swap *)
-       lem_ex10c x                        (* invokes def'n of swap *)
+       assert (s1 == swap(reverse x) `concat` ab);
+
+       lem_ex10c x;                        (* inductive step *)
+       assert (s1 == reverse(swap x) `concat` ab);
+
+       reverseLemma ba (swap x);          (* reverse <-> concat *)
+       ()
      ) else
        ()
