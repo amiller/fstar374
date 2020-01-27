@@ -79,8 +79,47 @@ let rec lem_3_1 w d1 d2 p q =
     lem_3_1 x d1 d2 p' q';
     ()
 
+
+(* DFA and Fooling Sets *)
+
+type language = string -> bool
+let is_in (s:string) (l:language) = l s
+
+
+(* Fooling Sets *)
+type foolingpair (l:language) = xyz:_{let (x,y,z) = xyz in is_in (x ++ z) l =!= is_in (y ++ z) l}
+
+let accepts_language (l:language) (d:dfa) = (forall s. is_in s l == d.is_accept (delta_star d d.start s))
+
+val lem_deltastar (d:dfa) (q1:state d) (q2:state d) (x:string) (y:string) : (z:string) -> Lemma
+  (ensures delta_star d q1  x     == delta_star d q2  y ==>
+   delta_star d q1 (x++z) == delta_star d q2 (y ++ z)) (decreases %[x;y])
+let rec lem_deltastar d q1 q2 x y z = 
+  if (delta_star d q1 x = delta_star d q2 y) then
+     match (x,y) with 
+     | [], [] -> ()
+     | (a :: xs, _) -> 
+       lem_deltastar d (d.trans q1 a) q2 xs y z
+     | ([], b::ys) -> lem_deltastar d q1 (d.trans q2 b) x ys z
+  else ()
+
+val lem_foolingsets (l:language) (xyz:foolingpair l) : (d:dfa) -> Lemma 
+  (requires (accepts_language l d))
+  (ensures (let (x,y,z) = xyz in 
+           delta_star d d.start x =!= delta_star d d.start y))
+let lem_foolingsets l xyz d = let (x,y,z) = xyz in
+  lem_deltastar d d.start d.start x y z
+
+(* Towards pigeon hole principle and counting fooling sets *)
+type foolingset (l:language) = xs:(list string) {forall (i:nat{i<length xs}) (j:nat{j<length xs}). exists (z:string).
+                  l (index xs i ++ z) =!= l (index xs j ++ z)}
+
+type infinite_foolingset (l:language) = (n:nat) -> (fs:foolingset l{length fs > n})
+(* TODO *)
+(* I can state the lemma that infinite fooling sets => no DFA accepts it, but
+   not sure how to prove this *)
+val lem_infinite_foolingset (l:language) (d:dfa) (fs:infinite_foolingset l) : (n:nat) -> Lemma (requires accepts_language l d) (ensures d.n >= n)
+
+
 (* NFAs *)
-
-(** TODO **)
-
-
+(* TODO *)
