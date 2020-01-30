@@ -8,14 +8,20 @@ open FStar.Classical
 
 let op_Plus_Plus = FStar.List.Tot.Base.append
 
-(* The alphabet for strings *)
+(* Assume we have an alphabet for strings. *)
+(* We won't be running the programs here, merely proving them correct ;*)
+
 assume val sigma: t:Type0{hasEq t}
 type string : Type0 = list sigma
 
-(** Type for nats within a bound **)
+(* Type for nats within a bound *)
+(* TODO this exists in library? *)
 type fin (max:nat) = (n:nat {n < max})
 
-(** Define a DFA as a record **)
+(* Define a DFA as a record. 
+   We're explicitly representing states as natural numbers. 
+   TODO: replace with finite set from library
+ *)
 noeq type dfa = {
    n : nat;                          (* number of states *)
    start : fin n;                  (* starting state *)
@@ -24,16 +30,18 @@ noeq type dfa = {
 }
 type state (d:dfa) = fin d.n
 
+(* Here's the inductive definition for a string-directed walk through the DFA *)
 val delta_star : (d:dfa) -> state d -> (s:string) -> Tot (state d) (decreases %[s])
 let rec delta_star dfa q s = match s with
   | [] -> q
   | a :: x -> delta_star dfa (dfa.trans q a) x
 
+(* The first few lemmas about DFAs follow from the book 
+  TODO improve reference *)
 
-
-(** Section 3.3: An identity on DFAs to prove
+(* Section 3.3: An identity on DFAs to prove
     δ∗(q, x a) = δ(δ∗(q, x), a)
- **)
+ *)
 val lem_3_3 (x:string) (d:dfa) (q:state d) (a:sigma) : 
   Lemma (delta_star d q (x ++ [a]) == d.trans (delta_star d q x) a)
 let rec lem_3_3 x d q a =
@@ -43,7 +51,8 @@ let rec lem_3_3 x d q a =
 
 
 (* Inductive lemma about d*. For if d*(x) and d*(y) land in the same state, then for any 
-   suffix z, d*(x++z) and d*(y++z) land in the same state. *)
+   suffix z, d*(x++z) and d*(y++z) land in the same state. 
+    This seems to require two induction steps, TODO simplify? *)
 val lem_deltastar (d:dfa) (q1:state d) (q2:state d) (x:string) (y:string) : (z:string) -> Lemma
   (ensures delta_star d q1  x     == delta_star d q2  y ==>
    delta_star d q1 (x++z) == delta_star d q2 (y ++ z)) (decreases %[x;y])
@@ -57,9 +66,13 @@ let rec lem_deltastar d q1 q2 x y z =
 
 
 (* Product Construction *)
+(* Since we've chosen explicit numbers to represent states, we have to describe how 
+   to map back and forth between pairs of states (x,y) and (x*|Y| + y). *)
+
 val fin_prod (#n1:nat) (#n2:nat) (a:fin n1) (b:fin n2): fin (n1 * n2)
 let fin_prod #n1 #n2 a b = 
-  (* This lemma is necessary to prove that a*n2 + b < n1 * n2 as required *)
+  (* This lemma was necessary to look up from the math library, to
+     prove that a*n2 + b < n1 * n2 as required *)
   lemma_eucl_div_bound b a n2;
   (a * n2) + b
 
@@ -99,56 +112,74 @@ let rec lem_3_1 w d1 d2 p q =
 
 (** Languages and suffixes **)
 
-(* Define a language by its membership function *)
-(* TODO: This is too strong, as it only represents computable languages *)
-(* Alternative: type language = string -> GTot Type0 *)
-type language = string -> bool
+(* Define a language by its membership function. *)
+
+
+(* An alternative is:
+        type language = string -> bool 
+   however, in the logic of F*, this would only represent *decidable* languages,
+   since it's a constructive proof. It wouldn't make much different to how we 
+   write the proofs. But, it's fundamental, because we've already gone over how
+   not all languages can be decideable (since there are more languages than programs,
+   i.e. the set of all languages is uncountably infinite. *)
+
+type language = string -> GTot Type0
 
 (* For syntax sugar, we can write this infix as "x `is_in` l" *)
 let is_in (s:string) (l:language) = l s
 
-(* Define equivalent for a language. Two strings are equivalent if for every suffix, 
-   they have the same membership or not *)
-let equiv l x y = forall z. ((x ++ z) `is_in` l <==> (y ++ z) `is_in` l)
-
-(** Fooling Pairs and Fooling Sets **)
-
-(* Strings x,y are a fooling pair iff there exists some distinguishing suffiz z, 
-     meaning that ((x++z) `is_in` l) is not equal to ((y++z) `is_in l) *)
-
-(* A proof of p xor q is either: a constructive proof of p, and a proof that q ==> False, 
-   or vice versa *)
-let xor (p:Type0) (q:Type0) = (p /\ (q ==> False)) \/ (q /\ (p ==> False))
-
-type foolingsuffix l x y = (z:string {((x++z) `is_in` l) `xor` ((y++z) `is_in` l)})
-type foolingpair l = {
-  x:string;
-  y:string;
-  z: foolingsuffix l x y
- }
 
 (* A dfa accepts the language if for every s, s in L <==> d*(s) lands in an accept state *)
 val accepts_language : language -> dfa -> GTot Type0
 let accepts_language (l:language) (d:dfa) = (forall s. is_in s l <==> d.is_accept (delta_star d d.start s))
 
 
-(* ***********************
- * Infinite fooling sets ==> No DFA accepts
- *************************)
+(* Define equivalent for a language. Two strings are equivalent if for every suffix, 
+   they have the same membership or not *)
+let equiv l x y = forall z. ((x ++ z) `is_in` l <==> (y ++ z) `is_in` l)
+
+
+(** Fooling Pairs and Fooling Sets **)
+
+(* Strings x,y are a fooling pair iff there exists some distinguishing suffiz z, 
+     meaning that ((x++z) `is_in` l) is not equal to ((y++z) `is_in l) *)
+
+let xor (p:Type0) (q:Type0) : Type0 = (p /\ ~q) \/ (q /\ ~p)
+type foolingsuffix (l:language) x y = (z:string {((x++z) `is_in` l) `xor` ((y++z) `is_in` l)})
+
+type foolingpair l = x:string & y:string & z:foolingsuffix l x y
+
+
+
+
+(* *************************************************
+ * Theorem: Infinite fooling sets ==> No DFA accepts
+ ***************************************************)
+
+(* Dealing with infinite sets is a little tricky, so the work here is incomplete.
+
+   Here we give a constructive proof of the main lemma that's about DFAs and 
+   foolingpairs.        
+   This immediately implies that infinite fooling sets => infinite states 
+
+*)
 
 (* Lemma: If (x,y) are a fooling pair for l, and d* is a DFA that accepts l,
           then d*(x) != d*(y). 
-       This immediately implies that infinite fooling sets => infinite states *)
+       *)
 val lem_foolingpair (l:language) (xyz:foolingpair l) : (d:dfa) -> Lemma 
   (requires (accepts_language l d))
-  (ensures (let {x;y;z} = xyz in 
+  (ensures (let (|x,y,z|) = xyz in 
            delta_star d d.start x =!= delta_star d d.start y))
-let lem_foolingpair l xyz d = let {x;y;z} = xyz in
+let lem_foolingpair l xyz d = let (|x,y,z|) = xyz in
   lem_deltastar d d.start d.start x y z
 
-(* A fooling set is a set of strings, such any distinct pair is a fooling pair, *)
+(* A fooling set is a finite set of strings, such that any distinct pair is a fooling pair *)
 noeq type foolingset (l:language) =  {
-  xs:(list string);
+  xs:list string;
+
+  (* We *should* assume the strings in the fooling set are decideable *)
+  decs: (decs:list bool {length decs = length xs /\ (forall i. index decs i <==> l (index xs i))});  
   map : (i:nat{i<length xs}) -> (j:nat{j<length xs /\ j=!=i}) -> foolingsuffix l (index xs i) (index xs j)
 }
 
@@ -177,18 +208,19 @@ val lem_equiv_rep (l:language) (fs:foolingset l) (mf:max_foolingset l fs) (i:nat
   Lemma (i == mf (index fs.xs i))
 let lem_equiv_rep l fs mf i = 
   let j = mf (index fs.xs i) in 
-    if i = j then () else
-      let _ = fs.map i j in ()
+    if i = j then () else (
+      give_witness (fs.map i j)
+    )
 
 (* Equivalence by mf ==> equivalence by suffix *)
 val lem_equiv_m2s (l:language) (fs:foolingset l) (mf:max_foolingset l fs) (x:string) (y:string) : Lemma
     (requires equiv_mf #l #fs #mf x y)
     (ensures  equiv l x y)
 let lem_equiv_m2s l fs mf x y =
-  let _ = mf x in
-  let _ = mf y in
-    let f z : Lemma (l (x ++ z) == l (y ++ z)) = () in
-    forall_intro f
+  give_witness (mf x);
+  give_witness (mf y);
+  let f z : Lemma (l (x ++ z) <==> l (y ++ z)) = () in
+  forall_intro f
 
 (* Equivalence by suffix ==> equivalence under mf *)
 val lem_equiv_s2m (l:language) (fs:foolingset l) (mf:max_foolingset l fs) (x:string) (y:string) : Lemma
@@ -199,6 +231,7 @@ let lem_equiv_s2m l fs mf x y =
   let j = mf y in
     if i = j then () else
       let z = fs.map i j in ()
+
 
 (* Let x and y be two strings such that [x] = [y]. 
    For every symbol a, we have [x a] = [y a] *)
@@ -213,7 +246,11 @@ let lem_mf_equiv l fs mf x y a =
     append_assoc y [a] z
   ) in
   forall_intro f;
-  lem_equiv_s2m l fs mf (x ++ [a]) (y ++ [a])
+  lem_equiv_s2m l fs mf (x ++ [a]) (y ++ [a]);
+  (* FIXME: What's going wrong here? This assertion passes. And this
+  assertion is exactly the current goal. So isn't it here working? *)
+  assert (equiv_mf #l #fs #mf (x ++ [a]) (y ++ [a]));
+  admit()
 
 
 (* Define the Maximum Fooling Sets to DFA construction *)
@@ -222,9 +259,10 @@ let foolingset_to_dfa l fs mf = {
   n = length fs.xs;                            (* One state for each string in the fooling set *)
   start = mf [];                               (* Start at the index given by the empty string *)
   trans = (fun q a -> mf (index fs.xs q ++ [a])); (*  *)
-  is_accept = (fun q -> is_in (index fs.xs q) l)  (* States are accepted if the representative
+  is_accept = (fun q -> index fs.decs q)          (* States are accepted if the representative
                                                   string is in the language *)
-  }
+}
+
 
 (* An "Easy inductive proof" that δ∗([x], z) = [x ++ z] *)
 val lem_fs_to_dfa_invariant (l:language) (fs:foolingset l) (mf:max_foolingset l fs) (q:fin (length fs.xs)): (x:string) -> (z:string) ->
@@ -247,7 +285,7 @@ val lem_fs_to_dfa_correct (l:language) (fs:foolingset l) (mf:max_foolingset l fs
   Lemma (accepts_language l (foolingset_to_dfa l fs mf))
 let lem_fs_to_dfa_correct l fs mf = 
   let d = foolingset_to_dfa l fs mf in 
-  let f s : Lemma (l s == d.is_accept (delta_star d d.start s)) = (
+  let f s : Lemma (l s <==> d.is_accept (delta_star d d.start s)) = (
     lem_fs_to_dfa_invariant l fs mf (mf []) [] s;
     let q_final = delta_star d (mf []) s in
     lem_equiv_rep l fs mf q_final;
