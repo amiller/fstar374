@@ -6,6 +6,8 @@ open FStar.Fin
 open FStar.List.Tot
 open FStar.List.Tot.Properties
 open FStar.Classical
+open FStar.Seq.Properties
+module S = FStar.Seq
 
 let op_Plus_Plus = FStar.List.Tot.Base.append
 
@@ -164,28 +166,76 @@ type foolingpair l = x:string & y:string & z:foolingsuffix l x y
 
 *)
 
-(* Lemma: If (x,y) are a fooling pair for l, and d* is a DFA that accepts l,
-          then d*(x) != d*(y). 
-       *)
-val lem_foolingpair (l:language) (xyz:foolingpair l) : (d:dfa) -> Lemma 
-  (requires (accepts_language l d))
-  (ensures (let (|x,y,z|) = xyz in 
-           delta_star d d.start x =!= delta_star d d.start y))
-let lem_foolingpair l xyz d = let (|x,y,z|) = xyz in
-  lem_deltastar d d.start d.start x y z
-
-(* A fooling set is a finite set of strings, such that any distinct pair is a fooling pair *)
+(* A fooling set is a finite set of strings, such that any distinct pair has a 
+   fooling suffix. *)
 noeq type foolingset (l:language) =  {
-  xs:list string;
-  map : (i:nat{i<length xs}) -> (j:nat{j<length xs /\ j=!=i}) -> foolingsuffix l (index xs i) (index xs j)
+  xs:S.seq string;
+  map : (i:nat{i<S.length xs}) -> (j:nat{j<S.length xs /\ j=!=i}) -> foolingsuffix l (S.index xs i) (S.index xs j)
 }
 
+(* An infinite fooling set means we can construct a fooling set for any size *)
+type infinite_foolingset (l:language) = (n:nat) -> (fs:foolingset l{S.length fs.xs > n})
 
-type infinite_foolingset (l:language) = (n:nat) -> (fs:foolingset l{length fs.xs > n})
-(* TODO *)
-(* Here is one way to state this lemma. Infinite fooling sets => no DFA accepts it, but
-   not sure how to prove this *)
-val lem_infinite_foolingset (l:language) (d:dfa) (fs:infinite_foolingset l) : (n:nat) -> Lemma (requires accepts_language l d) (ensures d.n >= n)
+let lem_infinite_foolingset (l:language) (d:dfa) (iff:infinite_foolingset l) : 
+  Lemma (requires accepts_language l d) (ensures False) =
+    let fs = iff (d.n + 1) in  
+    (* g n is defined as the accepting state of the string given
+       by the k'th residual class.
+       By pigeonhole, g is not injective. *)
+    let g (k:fin (d.n + 1)) : state d = 
+      delta_star d d.start (S.index fs.xs k) in
+    let s : S.seq (state d) = S.init (d.n + 1) g in
+    let (i,j) = pigeonhole #d.n s in
+    let x = S.index fs.xs i in
+    let y = S.index fs.xs j in
+    assert (delta_star d d.start x == delta_star d d.start y);
+
+    (* Since fs is a fooling set, there must 
+       exist a suffix z such that exactly one of fi++z and fj++z are
+       in the original language. *)
+    let z = fs.map i j in
+    lem_deltastar d d.start d.start x y z
+
+
+
+
+(* Example of using the residual criterion to show that an un-decideable
+    language.
+
+     { a^n b^n | n in nat }
+   is non-regular.
+
+   How can we encode a language without giving a decider for it? The approach
+   will be to give an open definition, by only defining the proposition for 
+   a subset of the language. In fact we haven't explicitly stated what the rest
+   of the language is.
+ *)
+assume val symA : sigma
+assume val symB : sigma
+
+assume val anbn_lang : language
+
+let rec repeat (c:sigma) (n:nat) : string = if n = 0 then [] else c::repeat c (n-1)
+
+let ambn_string (m:nat) (n:nat) : s:string =
+   repeat symA m ++ repeat symB n
+
+(* Here we define decideability for only some strings *)
+assume val ambn_decide (m:nat) (n:nat) : m == n <==> ambn_string m n `is_in` anbn_lang
+
+let anbn_lem : infinite_foolingset anbn_lang =
+  fun (k:nat) ->
+    let xs = S.init (k+1) (repeat symA) in
+    let map (m:fin (k+1)) (n:fin (k+1){m =!= n}) : 
+        foolingsuffix anbn_lang (S.index xs m) (S.index xs n) = 
+          let x = repeat symA m in
+          let y = repeat symA n in          
+          let z = repeat symB m in
+          give_witness (ambn_decide m m);
+          give_witness (ambn_decide n m);
+          z in
+    { xs = xs; map = map }
+
 
 
 (* DFA Construction from Fooling sets *)
@@ -199,18 +249,18 @@ val lem_infinite_foolingset (l:language) (d:dfa) (fs:infinite_foolingset l) : (n
    This corresponds to the existence of a Classifier 
     https://hal.archives-ouvertes.fr/hal-01832031/document
    *)
-type max_foolingset (l:language) (fs:foolingset l) = (s:string) -> (i:fin (length fs.xs){equiv l (index fs.xs i) s})
+type max_foolingset (l:language) (fs:foolingset l) = (s:string) -> (i:fin (S.length fs.xs){equiv l (S.index fs.xs i) s})
 
 (* Alternate equivalence relation.
    Given a maximum fooling set, two strings are related if their image under this mapping 
    is the same. *)
-let equiv_mf (l:language) (fs:foolingset l) (mf:max_foolingset l fs) s1 s2 = (mf s1 == mf s2)
+let equiv_mf (l:language) (fs:foolingset l) (mf:max_foolingset l fs) s1 s2 = (mf s1 = mf s2)
 
 (* The representative of this equivalence class must map to itself *)
-val lem_equiv_rep (l:language) (fs:foolingset l) (mf:max_foolingset l fs) (i:nat{i < length fs.xs}) :
-  Lemma (i == mf (index fs.xs i))
+val lem_equiv_rep (l:language) (fs:foolingset l) (mf:max_foolingset l fs) (i:nat{i < S.length fs.xs}) :
+  Lemma (i == mf (S.index fs.xs i))
 let lem_equiv_rep l fs mf i = 
-  let j = mf (index fs.xs i) in 
+  let j = mf (S.index fs.xs i) in 
     if i = j then () else (
       give_witness (fs.map i j)
     )
@@ -259,16 +309,16 @@ let lem_mf_equiv l fs mf x y a =
 (* Define the Maximum Fooling Sets to DFA construction *)
 val foolingset_to_dfa : (l:language) -> (dec:decider l) -> (fs:foolingset l) -> (mf:max_foolingset l fs) -> dfa
 let foolingset_to_dfa l dec fs mf = {
-  n = length fs.xs;                            (* One state for each string in the fooling set *)
-  start = mf [];                               (* Start at the index given by the empty string *)
-  trans = (fun q a -> mf (index fs.xs q ++ [a])); (*  *)
-  is_accept = (fun q -> dec (index fs.xs q))      (* States are accepted if the representative
+  n = S.length fs.xs;                     (* One state for each string in the fooling set *)
+  start = mf [];                          (* Start at the index given by the empty string *)
+  trans = (fun q a -> mf (S.index fs.xs q ++ [a])); (*  *)
+  is_accept = (fun q -> dec (S.index fs.xs q))      (* States are accepted if the representative
                                                   string is in the language *)
 }
 
 
 (* An "Easy inductive proof" that δ∗([x], z) = [x ++ z] *)
-val lem_fs_to_dfa_invariant (l:language) (dec:decider l) (fs:foolingset l) (mf:max_foolingset l fs) (q:fin (length fs.xs)): (x:string) -> (z:string) ->
+val lem_fs_to_dfa_invariant (l:language) (dec:decider l) (fs:foolingset l) (mf:max_foolingset l fs) (q:fin (S.length fs.xs)): (x:string) -> (z:string) ->
   Lemma 
     (requires q = mf x)
     (ensures (let d = foolingset_to_dfa l dec fs mf in 
@@ -278,7 +328,7 @@ let rec lem_fs_to_dfa_invariant l dec fs mf q x z =
   | [] -> append_l_nil x
   | a::z' -> (let qa = (d.trans q a) in 
     lem_equiv_rep l fs mf q;
-    lem_mf_equiv l fs mf x (index fs.xs q) a;
+    lem_mf_equiv l fs mf x (S.index fs.xs q) a;
     lem_fs_to_dfa_invariant l dec fs mf qa (x++[a]) z'; 
     append_assoc x [a] z'
   )
@@ -292,7 +342,7 @@ let lem_fs_to_dfa_correct l dec fs mf =
     lem_fs_to_dfa_invariant l dec fs mf (mf []) [] s;
     let q_final = delta_star d (mf []) s in
     lem_equiv_rep l fs mf q_final;
-    lem_equiv_m2s l fs mf (index fs.xs q_final) s;
+    lem_equiv_m2s l fs mf (S.index fs.xs q_final) s;
     append_l_nil s;
-    append_l_nil (index fs.xs q_final)
+    append_l_nil (S.index fs.xs q_final)
   ) in forall_intro f
