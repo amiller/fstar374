@@ -1,5 +1,41 @@
 module FiniteState
 
+(* This is a presentation in F* of some theory about decidable
+   languages and Deterministic Finite-state Automata (DFAs).
+
+   The main goal is to state and prove the following two theorem 
+   statements:
+
+     (1) A language cannot be recognized by a DFA if it 
+     has an infinite number of fooling sets.
+
+     (2) If a decidable language has a maximum size fooling set
+     residual classes, then it can be recognized by a DFA.
+
+   This is a retelling of the Myhill-Nerode theorem, which is
+   usually presented in terms of sets of equivalence relations.
+   In F*, it is slightly more subtle because we have to be explicit
+   explicit about how we use constructive forms.
+   It requires care, for example, to state that a language is regular
+   without presuming that the language is decidable.
+
+   The code here mainly follows the "fooling sets" notions from 
+   course nodes on DFAs and the Myhill-Nerode theorem [3]. 
+   Inspiration on the encoding here comes Doczkal and Smolka [1] as 
+   well as F* regular expressions from Chajed [2].
+
+   [1] Regular Language Representations in the Constructive
+   Type Theory of Coq
+   Christian Doczkal, Gert Smolka
+   https://hal.archives-ouvertes.fr/hal-01832031/document
+
+   [2] Regular Expression Derivatives in F*. Tej Chajed. 
+     https://github.com/tchajed/regex-derivative
+
+   [3] Models of Computation. Jeff Erickson.
+   http://jeffe.cs.illinois.edu/teaching/algorithms/models/all-models.pdf
+*)
+
 open FStar.Mul
 open FStar.Math.Lemmas
 open FStar.Fin
@@ -111,41 +147,41 @@ let rec lem_3_1 w d1 d2 p q =
 
 (** Languages and suffixes **)
 
-(* Define a language by its membership function. *)
-
-
-(* An alternative is:
-        type language = string -> bool 
-   however, in the logic of F*, this would only represent *decidable* languages,
-   since it's a constructive proof. It wouldn't make much different to how we 
-   write the proofs. But, it's fundamental, because we've already gone over how
-   not all languages can be decideable (since there are more languages than programs,
-   i.e. the set of all languages is uncountably infinite. *)
+(* A language is defined by giving a proposition for every string.
+   Importantly, this encoding does not presume that languages are 
+   decidable.
+    *)
 
 type language = string -> GTot Type0
 
 (* For syntax sugar, we can write this infix as "x `is_in` l" *)
 let is_in (s:string) (l:language) = l s
 
-(* Define decidable languages *)
-type decider (l:language) = f:(string -> bool){forall x. f x <==> l x}
+(* Define extensional equivalence for a language. *)
+let equiv_l (l1:language) (l2:language) = forall s. (s `is_in` l1 <==> s `is_in` l2)
 
+
+(* A decider is a constructive proof that the language is decidable. *)
+type decider (l:language) = f:(string -> bool){forall x. f x <==> l x}
+   
 
 (* A dfa accepts the language if for every s, s in L <==> d*(s) lands in an accept state *)
-val accepts_language : language -> dfa -> GTot Type0
-let accepts_language (l:language) (d:dfa) = (forall s. is_in s l <==> d.is_accept (delta_star d d.start s))
+val accepts : dfa -> language -> GTot Type0
+let accepts (d:dfa) (l:language) = (forall s. is_in s l <==> d.is_accept (delta_star d d.start s))
 
 
-(* Define equivalent for a language. Two strings are equivalent if for every suffix, 
-   they have the same membership or not *)
-let equiv l x y = forall z. ((x ++ z) `is_in` l <==> (y ++ z) `is_in` l)
 
+(** Residual Classes and Fooling Sets **)
 
-(** Fooling Pairs and Fooling Sets **)
+(* Residual language, also written as a quotient language {x}/L *)
+val residual (l:language) (x:string) : language
+let residual l x y = (x ++ y) `is_in` l
 
-(* Strings x,y are a fooling pair iff there exists some distinguishing suffiz z, 
-     meaning that ((x++z) `is_in` l) is not equal to ((y++z) `is_in l) *)
+(* Two strings are equivalent if their residual languages are the same *)
+let equiv l x y = residual l x `equiv_l` residual l y
 
+(* Strings x,y are a fooling pair if we have a witness that their 
+   residual languages are distinct. *)
 let xor (p:Type0) (q:Type0) : Type0 = (p /\ ~q) \/ (q /\ ~p)
 type foolingsuffix (l:language) x y = (z:string {((x++z) `is_in` l) `xor` ((y++z) `is_in` l)})
 
@@ -153,18 +189,9 @@ type foolingpair l = x:string & y:string & z:foolingsuffix l x y
 
 
 
-
 (* *************************************************
  * Theorem: Infinite fooling sets ==> No DFA accepts
  ***************************************************)
-
-(* Dealing with infinite sets is a little tricky, so the work here is incomplete.
-
-   Here we give a constructive proof of the main lemma that's about DFAs and 
-   foolingpairs.        
-   This immediately implies that infinite fooling sets => infinite states 
-
-*)
 
 (* A fooling set is a finite set of strings, such that any distinct pair has a 
    fooling suffix. *)
@@ -177,7 +204,7 @@ noeq type foolingset (l:language) =  {
 type infinite_foolingset (l:language) = (n:nat) -> (fs:foolingset l{S.length fs.xs > n})
 
 let lem_infinite_foolingset (l:language) (d:dfa) (iff:infinite_foolingset l) : 
-  Lemma (requires accepts_language l d) (ensures False) =
+  Lemma (requires d `accepts` l) (ensures False) =
     let fs = iff (d.n + 1) in  
     (* g n is defined as the accepting state of the string given
        by the k'th residual class.
@@ -335,7 +362,7 @@ let rec lem_fs_to_dfa_invariant l dec fs mf q x z =
 
 (* Completing the correctness proof *)
 val lem_fs_to_dfa_correct (l:language) (dec:decider l) (fs:foolingset l) (mf:max_foolingset l fs) :
-  Lemma (accepts_language l (foolingset_to_dfa l dec fs mf))
+  Lemma ((foolingset_to_dfa l dec fs mf) `accepts` l)
 let lem_fs_to_dfa_correct l dec fs mf = 
   let d = foolingset_to_dfa l dec fs mf in 
   let f s : Lemma (l s <==> d.is_accept (delta_star d d.start s)) = (
