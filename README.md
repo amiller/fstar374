@@ -1,8 +1,11 @@
-   This is a presentation in F* of some theory about decidable
+Mechanized Theory of Computation
+---------------------------
+
+This is a presentation in [F*](https://www.fstar-lang.org/) of some theory about decidable
    languages, and Deterministic Finite-state Automata (DFAs).
 
-   It is intended as a supplement to a Models of Computation course,
-   that provides a gentle introduction to mechanized proofs.
+   It is intended as supplementary material for a Models of Computation
+   course, meant to provide a gentle introduction to mechanized proofs.
 
    - _[Strings.fst](Strings.fst):_ (easy)
      Define strings as inductive types, and give some simple
@@ -29,3 +32,10 @@
    Type Theory of Coq
    Christian Doczkal, Gert Smolka
    https://hal.archives-ouvertes.fr/hal-01832031/document
+
+Running Instructions
+====================
+Instructions for installing F* are found here:
+https://www.fstar-lang.org/#download
+
+The code here was developed in the [fstar-emacs](https://hub.docker.com/r/fstarlang/fstar-emacs) docker environment.
