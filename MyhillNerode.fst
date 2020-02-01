@@ -75,7 +75,7 @@ val residual (l:language) (x:string) : language
 let residual l x y = (x ++ y) `is_in` l
 
 (* Two strings are equivalent under a language if their residual languages
-   are requivalent. *)
+   are equivalent. *)
 let equiv_r l x y = residual l x `equiv` residual l y
 
 (* We call two strings x,y a fooling pair if we have a witness z that 
@@ -126,9 +126,7 @@ let lem_infinite_foolingset (l:language) (d:dfa) (iff:infinite_foolingset l) :
 
 
 
-(* Example of using the residual criterion to show that an un-decideable
-    language.
-
+(* Example of using the residual criterion to show that the language
      { a^n b^n | n in nat }
    is non-regular.
 
