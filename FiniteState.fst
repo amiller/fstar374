@@ -2,6 +2,7 @@ module FiniteState
 
 open FStar.Mul
 open FStar.Math.Lemmas
+open FStar.Fin
 open FStar.List.Tot
 open FStar.List.Tot.Properties
 open FStar.Classical
@@ -14,9 +15,6 @@ let op_Plus_Plus = FStar.List.Tot.Base.append
 assume val sigma: t:Type0{hasEq t}
 type string : Type0 = list sigma
 
-(* Type for nats within a bound *)
-(* TODO this exists in library? *)
-type fin (max:nat) = (n:nat {n < max})
 
 (* Define a DFA as a record. 
    We're explicitly representing states as natural numbers. 
@@ -38,7 +36,6 @@ let rec delta_star dfa q s = match s with
 
 (* The first few lemmas about DFAs follow from the book 
   TODO improve reference *)
-
 (* Section 3.3: An identity on DFAs to prove
     δ∗(q, x a) = δ(δ∗(q, x), a)
  *)
@@ -128,6 +125,9 @@ type language = string -> GTot Type0
 (* For syntax sugar, we can write this infix as "x `is_in` l" *)
 let is_in (s:string) (l:language) = l s
 
+(* Define decidable languages *)
+type decider (l:language) = f:(string -> bool){forall x. f x <==> l x}
+
 
 (* A dfa accepts the language if for every s, s in L <==> d*(s) lands in an accept state *)
 val accepts_language : language -> dfa -> GTot Type0
@@ -177,9 +177,6 @@ let lem_foolingpair l xyz d = let (|x,y,z|) = xyz in
 (* A fooling set is a finite set of strings, such that any distinct pair is a fooling pair *)
 noeq type foolingset (l:language) =  {
   xs:list string;
-
-  (* We *should* assume the strings in the fooling set are decideable *)
-  decs: (decs:list bool {length decs = length xs /\ (forall i. index decs i <==> l (index xs i))});  
   map : (i:nat{i<length xs}) -> (j:nat{j<length xs /\ j=!=i}) -> foolingsuffix l (index xs i) (index xs j)
 }
 
@@ -195,13 +192,19 @@ val lem_infinite_foolingset (l:language) (d:dfa) (fs:infinite_foolingset l) : (n
 
 (* fs is a maximum size fooling set if adding any additional string would 
    make it NOT a fooling set. In other words, for every string s, 
-   there exists an x in fs, such that (s,x) is NOT a fooling pair. *)   
-type max_foolingset (l:language) (fs:foolingset l) = (s:string) -> (i:(fin (length fs.xs)){equiv l (index fs.xs i) s})
+   there exists an x in fs, such that (s,x) is NOT a fooling pair. 
+   Our DFA construction relies on a constructive way to map any string to its representative 
+   in this set. 
+   
+   This corresponds to the existence of a Classifier 
+    https://hal.archives-ouvertes.fr/hal-01832031/document
+   *)
+type max_foolingset (l:language) (fs:foolingset l) = (s:string) -> (i:fin (length fs.xs){equiv l (index fs.xs i) s})
 
 (* Alternate equivalence relation.
    Given a maximum fooling set, two strings are related if their image under this mapping 
    is the same. *)
-let equiv_mf (#l:language) (#fs:foolingset l) (#mf:max_foolingset l fs) s1 s2 = (mf s1 == mf s2)
+let equiv_mf (l:language) (fs:foolingset l) (mf:max_foolingset l fs) s1 s2 = (mf s1 == mf s2)
 
 (* The representative of this equivalence class must map to itself *)
 val lem_equiv_rep (l:language) (fs:foolingset l) (mf:max_foolingset l fs) (i:nat{i < length fs.xs}) :
@@ -214,7 +217,7 @@ let lem_equiv_rep l fs mf i =
 
 (* Equivalence by mf ==> equivalence by suffix *)
 val lem_equiv_m2s (l:language) (fs:foolingset l) (mf:max_foolingset l fs) (x:string) (y:string) : Lemma
-    (requires equiv_mf #l #fs #mf x y)
+    (requires equiv_mf l fs mf x y)
     (ensures  equiv l x y)
 let lem_equiv_m2s l fs mf x y =
   give_witness (mf x);
@@ -225,7 +228,7 @@ let lem_equiv_m2s l fs mf x y =
 (* Equivalence by suffix ==> equivalence under mf *)
 val lem_equiv_s2m (l:language) (fs:foolingset l) (mf:max_foolingset l fs) (x:string) (y:string) : Lemma
     (requires equiv l x y)
-    (ensures equiv_mf #l #fs #mf x y)
+    (ensures equiv_mf l fs mf x y)
 let lem_equiv_s2m l fs mf x y = 
   let i = mf x in
   let j = mf y in
@@ -237,8 +240,8 @@ let lem_equiv_s2m l fs mf x y =
    For every symbol a, we have [x a] = [y a] *)
 val lem_mf_equiv (l:language) (fs:foolingset l) (mf:max_foolingset l fs) (x:string) (y:string) (a:sigma) : 
    Lemma 
-   (requires equiv_mf #l #fs #mf x y)
-   (ensures  equiv_mf #l #fs #mf (x ++ [a]) (y ++ [a]))
+   (requires equiv_mf l fs mf x y)
+   (ensures  equiv_mf l fs mf (x ++ [a]) (y ++ [a]))
 let lem_mf_equiv l fs mf x y a = 
   lem_equiv_m2s l fs mf x y;
   let f z : Lemma (l (x ++ [a] ++ z) <==> l (y ++ [a] ++ z)) = (
@@ -249,44 +252,44 @@ let lem_mf_equiv l fs mf x y a =
   lem_equiv_s2m l fs mf (x ++ [a]) (y ++ [a]);
   (* FIXME: What's going wrong here? This assertion passes. And this
   assertion is exactly the current goal. So isn't it here working? *)
-  assert (equiv_mf #l #fs #mf (x ++ [a]) (y ++ [a]));
+  assert (equiv_mf l fs mf (x ++ [a]) (y ++ [a]));
   admit()
-
+  
 
 (* Define the Maximum Fooling Sets to DFA construction *)
-val foolingset_to_dfa : (l:language) -> (fs:foolingset l) -> (mf:max_foolingset l fs) -> dfa
-let foolingset_to_dfa l fs mf = {
+val foolingset_to_dfa : (l:language) -> (dec:decider l) -> (fs:foolingset l) -> (mf:max_foolingset l fs) -> dfa
+let foolingset_to_dfa l dec fs mf = {
   n = length fs.xs;                            (* One state for each string in the fooling set *)
   start = mf [];                               (* Start at the index given by the empty string *)
   trans = (fun q a -> mf (index fs.xs q ++ [a])); (*  *)
-  is_accept = (fun q -> index fs.decs q)          (* States are accepted if the representative
+  is_accept = (fun q -> dec (index fs.xs q))      (* States are accepted if the representative
                                                   string is in the language *)
 }
 
 
 (* An "Easy inductive proof" that δ∗([x], z) = [x ++ z] *)
-val lem_fs_to_dfa_invariant (l:language) (fs:foolingset l) (mf:max_foolingset l fs) (q:fin (length fs.xs)): (x:string) -> (z:string) ->
+val lem_fs_to_dfa_invariant (l:language) (dec:decider l) (fs:foolingset l) (mf:max_foolingset l fs) (q:fin (length fs.xs)): (x:string) -> (z:string) ->
   Lemma 
     (requires q = mf x)
-    (ensures (let d = foolingset_to_dfa l fs mf in 
+    (ensures (let d = foolingset_to_dfa l dec fs mf in 
        delta_star d q z == mf (x ++ z))) (decreases %[z])
-let rec lem_fs_to_dfa_invariant l fs mf q x z = 
-  let d = foolingset_to_dfa l fs mf in match z with 
+let rec lem_fs_to_dfa_invariant l dec fs mf q x z = 
+  let d = foolingset_to_dfa l dec fs mf in match z with 
   | [] -> append_l_nil x
   | a::z' -> (let qa = (d.trans q a) in 
     lem_equiv_rep l fs mf q;
     lem_mf_equiv l fs mf x (index fs.xs q) a;
-    lem_fs_to_dfa_invariant l fs mf qa (x++[a]) z'; 
+    lem_fs_to_dfa_invariant l dec fs mf qa (x++[a]) z'; 
     append_assoc x [a] z'
   )
 
 (* Completing the correctness proof *)
-val lem_fs_to_dfa_correct (l:language) (fs:foolingset l) (mf:max_foolingset l fs) :
-  Lemma (accepts_language l (foolingset_to_dfa l fs mf))
-let lem_fs_to_dfa_correct l fs mf = 
-  let d = foolingset_to_dfa l fs mf in 
+val lem_fs_to_dfa_correct (l:language) (dec:decider l) (fs:foolingset l) (mf:max_foolingset l fs) :
+  Lemma (accepts_language l (foolingset_to_dfa l dec fs mf))
+let lem_fs_to_dfa_correct l dec fs mf = 
+  let d = foolingset_to_dfa l dec fs mf in 
   let f s : Lemma (l s <==> d.is_accept (delta_star d d.start s)) = (
-    lem_fs_to_dfa_invariant l fs mf (mf []) [] s;
+    lem_fs_to_dfa_invariant l dec fs mf (mf []) [] s;
     let q_final = delta_star d (mf []) s in
     lem_equiv_rep l fs mf q_final;
     lem_equiv_m2s l fs mf (index fs.xs q_final) s;
