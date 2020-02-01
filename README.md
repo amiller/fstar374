@@ -1,4 +1,4 @@
-Mechanized Theory of Computation
+Mechanizing Theory of Computation
 ---------------------------
 
 This is a presentation in [F*](https://www.fstar-lang.org/) of some theory about decidable
