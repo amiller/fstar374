@@ -104,7 +104,7 @@ type infinite_foolingset (l:language) = (n:nat) -> (fs:foolingset l{S.length fs.
 
 
 (* Theorem 4.6 Residual Criterion *)
-let lem_infinite_foolingset (l:language) (d:dfa) (iff:infinite_foolingset l) : 
+let lem_infinite_foolingset (#l:language) (d:dfa) (iff:infinite_foolingset l) : 
   Lemma (requires d `accepts` l) (ensures False) =
     let fs = iff (d.n + 1) in  
     (* g n is defined as the accepting state of the string given
@@ -123,6 +123,7 @@ let lem_infinite_foolingset (l:language) (d:dfa) (iff:infinite_foolingset l) :
        in the original language. *)
     let z = fs.map i j in
     lem_deltastar d d.start d.start x y z
+
 
 
 
@@ -170,7 +171,7 @@ let anbn_lem : infinite_foolingset anbn_lang =
    A constructive proof of this is a classifier [1], that maps any
    string to a member of fs that is in the same residual class.
    *)
-type classifier (l:language) (fs:foolingset l)
+type classifier (#l:language) (fs:foolingset l)
   = (s:string) -> (i:fin (S.length fs.xs){equiv_r l (S.index fs.xs i) s})
 
 
@@ -178,56 +179,56 @@ type classifier (l:language) (fs:foolingset l)
    Two strings are related if their image under this mapping 
    is the same. Before proceeding with the DFA construction, we 
    show that these equivalence relations are isomorphic. *)
-let equiv_cls (l:language) (fs:foolingset l) (c:classifier l fs) s1 s2 = (c s1 == c s2)
+let equiv_cls (#l:language) (#fs:foolingset l) (c:classifier fs) s1 s2 = (c s1 == c s2)
 
 (* The representative of this equivalence class must map to itself *)
-val lem_equiv_rep (l:language) (fs:foolingset l) (c:classifier l fs) (i:nat{i < S.length fs.xs}) :
+val lem_equiv_rep (#l:language) (#fs:foolingset l) (c:classifier fs) (i:nat{i < S.length fs.xs}) :
   Lemma (i == c (S.index fs.xs i))
-let lem_equiv_rep l fs mf i = 
+let lem_equiv_rep #l #fs mf i = 
   let j = mf (S.index fs.xs i) in 
     if i = j then () else (
       give_witness (fs.map i j)
     )
 
 (* Equivalence by mf ==> equivalence by suffix *)
-val lem_equiv_m2s (l:language) (fs:foolingset l) (c:classifier l fs) (x:string) (y:string) : Lemma
-    (requires equiv_cls l fs c x y)
+val lem_equiv_m2s (#l:language) (#fs:foolingset l) (c:classifier fs) (x:string) (y:string) : Lemma
+    (requires equiv_cls c x y)
     (ensures  equiv_r l x y)
-let lem_equiv_m2s l fs mf x y =
-  give_witness (mf x);
-  give_witness (mf y);
+let lem_equiv_m2s #l #fs c x y =
+  give_witness (c x);
+  give_witness (c y);
   let f z : Lemma (l (x ++ z) <==> l (y ++ z)) = () in
   forall_intro f
 
 (* Equivalence by suffix ==> equivalence under mf *)
-val lem_equiv_s2m (l:language) (fs:foolingset l) (c:classifier l fs) (x:string) (y:string) : Lemma
+val lem_equiv_s2m (#l:language) (#fs:foolingset l) (c:classifier fs) (x:string) (y:string) : Lemma
     (requires equiv_r l x y)
-    (ensures equiv_cls l fs c x y)
-let lem_equiv_s2m l fs mf x y = 
-  let i = mf x in
-  let j = mf y in
+    (ensures equiv_cls c x y)
+let lem_equiv_s2m #l #fs c x y = 
+  let i = c x in
+  let j = c y in
     if i = j then () else
       let z = fs.map i j in ()
 
 (* Let x and y be two strings such that [x] = [y]. 
    For every symbol a, we have [x a] = [y a] *)
-val lem_mf_equiv (l:language) (fs:foolingset l) (c:classifier l fs) (x:string) (y:string) (a:sigma) : 
+val lem_mf_equiv (#l:language) (#fs:foolingset l) (c:classifier fs) (x:string) (y:string) (a:sigma) : 
    Lemma 
-   (requires equiv_cls l fs c x y)
-   (ensures  equiv_cls l fs c (x ++ [a]) (y ++ [a]))
-let lem_mf_equiv l fs c x y a = 
-  lem_equiv_m2s l fs c x y;
+   (requires equiv_cls c x y)
+   (ensures  equiv_cls c (x ++ [a]) (y ++ [a]))
+let lem_mf_equiv #l #fs c x y a = 
+  lem_equiv_m2s c x y;
   let f z : Lemma (l (x ++ [a] ++ z) <==> l (y ++ [a] ++ z)) = (
     append_assoc x [a] z;
     append_assoc y [a] z
   ) in
   forall_intro f;
-  lem_equiv_s2m l fs c (x ++ [a]) (y ++ [a])
+  lem_equiv_s2m c (x ++ [a]) (y ++ [a])
 
 
 (* Now we can define the Maximum Fooling Sets to DFA construction *)
-val classifier_to_dfa : (l:language) -> (dec:decider l) -> (fs:foolingset l) -> (c:classifier l fs) -> dfa
-let classifier_to_dfa l dec fs c = {
+val classifier_to_dfa : (#l:language) -> (dec:decider l) -> (#fs:foolingset l) -> (c:classifier fs) -> dfa
+let classifier_to_dfa #l dec #fs c = {
   n = S.length fs.xs;                   (* One state for each string in the fooling set *)
   start = c [];                         (* Start at the index given by the empty string *)
   trans = (fun q a -> c (S.index fs.xs q ++ [a]));
@@ -237,31 +238,31 @@ let classifier_to_dfa l dec fs c = {
 }
 
 (* An "Easy inductive proof" that δ∗([x], z) = [x ++ z] *)
-val lem_fs_to_dfa_invariant (l:language) (dec:decider l) (fs:foolingset l) (c:classifier l fs) (q:fin (S.length fs.xs)): (x:string) -> (z:string) ->
+val lem_fs_to_dfa_invariant (#l:language) (dec:decider l) (#fs:foolingset l) (c:classifier fs) (q:fin (S.length fs.xs)): (x:string) -> (z:string) ->
   Lemma 
     (requires q = c x)
-    (ensures (let d = classifier_to_dfa l dec fs c in 
+    (ensures (let d = classifier_to_dfa dec c in 
        delta_star d q z == c (x ++ z))) (decreases %[z])
-let rec lem_fs_to_dfa_invariant l dec fs c q x z = 
-  let d = classifier_to_dfa l dec fs c in match z with 
+let rec lem_fs_to_dfa_invariant #l dec #fs c q x z = 
+  let d = classifier_to_dfa dec c in match z with 
   | [] -> append_l_nil x
   | a::z' -> (let qa = (d.trans q a) in 
-    lem_equiv_rep l fs c q;
-    lem_mf_equiv l fs c x (S.index fs.xs q) a;
-    lem_fs_to_dfa_invariant l dec fs c qa (x++[a]) z';
+    lem_equiv_rep c q;
+    lem_mf_equiv c x (S.index fs.xs q) a;
+    lem_fs_to_dfa_invariant dec c qa (x++[a]) z';
     append_assoc x [a] z'
   )
 
 (* Completing the correctness proof *)
-val lem_fs_to_dfa_correct (l:language) (dec:decider l) (fs:foolingset l) (c:classifier l fs) :
-  Lemma ((classifier_to_dfa l dec fs c) `accepts` l)
-let lem_fs_to_dfa_correct l dec fs c = 
-  let d = classifier_to_dfa l dec fs c in 
+val lem_fs_to_dfa_correct (#l:language) (dec:decider l) (#fs:foolingset l) (c:classifier fs) :
+  Lemma ((classifier_to_dfa dec c) `accepts` l)
+let lem_fs_to_dfa_correct #l dec #fs c = 
+  let d = classifier_to_dfa dec c in 
   let f s : Lemma (l s <==> d.is_accept (delta_star d d.start s)) = (
-    lem_fs_to_dfa_invariant l dec fs c (c []) [] s;
+    lem_fs_to_dfa_invariant dec c (c []) [] s;
     let q_final = delta_star d (c []) s in
-    lem_equiv_rep l fs c q_final;
-    lem_equiv_m2s l fs c (S.index fs.xs q_final) s;
+    lem_equiv_rep c q_final;
+    lem_equiv_m2s c (S.index fs.xs q_final) s;
     append_l_nil s;
     append_l_nil (S.index fs.xs q_final)
   ) in forall_intro f
