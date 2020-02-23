@@ -1,16 +1,8 @@
 module Hanoi
 (* Towers of Hanoi in F* *)
 
-(*
-Let’s define a data structure for the board.
-*)
-
-
-open DFAs
-open FStar.Classical
 open FStar.Fin
 open FStar.List.Tot
-module S = FStar.Seq
 
 (* Give some basic types for the configuration of a Hanoi puzzle *)
 type disc = nat
