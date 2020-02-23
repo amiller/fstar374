@@ -1,8 +1,13 @@
+(* Towers of Hanoi in F*
+
+   Andrew Miller, 2020
+*)
 module Hanoi
-(* Towers of Hanoi in F* *)
 
 open FStar.Fin
 open FStar.List.Tot
+
+(* PROBLEM DEFINITON STARTS HERE *)
 
 (* Give some basic types for the configuration of a Hanoi puzzle *)
 type disc = nat
@@ -20,7 +25,7 @@ let canAdd (d:disc) (p:pole) : Type0 =
   | [] -> True
   | (top :: rest) -> (d < top)		
 
-(* Define three pick moves (the other three can be derived) *)
+(* Define three moves (the other three can be derived) *)
 assume val ax0 : forall d p q z. canAdd d p ==> canAdd d q ==> canMove (d::p, q, z) (p, d::q, z)
 assume val ax1 : forall d p q z. canAdd d p ==> canAdd d z ==> canMove (d::p, q, z) (p, q, d::z)
 assume val ax3 : forall d p q z. canAdd d q ==> canAdd d z ==> canMove (p, d::q, z) (p, q, d::z)
@@ -48,7 +53,7 @@ val hanoiTheorem : (n:nat) -> Lemma (canMove (seq n, [], []) ([], [], seq n))
 
 
 
-(* SOLUTION HERE *)
+(* SOLUTION STARTS HERE *)
 
 (* A first step: We only have 3 of the 6 moves given. Also, they are in the "forall" form, which is hard to explicitly work wtih. So lets define all 6 as lemmas we can reference. *)
 let lem_0 d p q r : Lemma (requires canAdd d p /\ canAdd d q) (ensures canMove (d::p, q, r) (p, d::q, r)) = ax0
@@ -58,9 +63,8 @@ let lem_3 d p q r : Lemma (requires canAdd d q /\ canAdd d r) (ensures canMove (
 let lem_4 d p q r : Lemma (requires canAdd d r /\ canAdd d p) (ensures canMove (p, q, d::r) (d::p, q, r)) = lem_1 d p q r; ax_sy
 let lem_5 d p q r : Lemma (requires canAdd d r /\ canAdd d q) (ensures canMove (p, q, d::r) (p, d::q, r)) = lem_3 d p q r; ax_sy
 
-(* The other axioms in explicit form too *)
+(* The other axiom in explicit form too *)
 let lem_tr b0 b1 b2 : Lemma (requires canMove b0 b1 /\ canMove b1 b2) (ensures canMove b0 b2) = ax_tr
-let lem_re b0 : Lemma (canMove b0 b0) = ax_re
 
 (* Second step: 
 
