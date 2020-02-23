@@ -39,13 +39,11 @@ assume val ax_re : forall b0. canMove b0 b0
 
 
 (* Define sequence [0..n-1] *)
-val seq : nat -> list nat
-
 let rec seq' (n:nat) (i:nat) = if n = 0 then [] else i :: seq' (n-1) (i+1) 
 let seq n : list nat = seq' n 0
 
 
-(* Define the Towers of Hanoi puzzle. 
+(* State the Towers of Hanoi puzzle theorem. 
   Your challenge is to instantiate this proposition! *)
 val hanoiTheorem : (n:nat) -> Lemma (canMove (seq n, [], []) ([], [], seq n))
 
@@ -122,6 +120,13 @@ let rec lemValMoves ms b0 b1 :
                 lemValMoves ms' (pick i j b0) b1; 
                 lem_tr b0 (pick i j b0) b1
 
+(* Concatenation of moves *)
+let rec lem_cat ms01 ms12 b0 b1 b2 : Lemma (requires validMove ms01 b0 b1 /\ validMove ms12 b1 b2) (ensures validMove (ms01 @ ms12) b0 b2) = 
+  match ms01 with
+  | [] -> ()
+  | (i,j)::ms -> lem_cat ms ms12 (pick i j b0) b1 b2
+
+
 
 (* Main idea 1: We can permute the moves, and it applies to permuted boards. *)
 
@@ -168,11 +173,6 @@ let rec lemSwapMap ms b0 b1 : Lemma (requires validMove ms (swap_b b0) (swap_b b
   | (i,j)::ms' -> lemSwap i j (swap_b b0);
                 lemSwapMap ms' (swap_b (pick i j (swap_b b0))) b1
 
-(* Concatenation of moves *)
-let rec lem_cat ms01 ms12 b0 b1 b2 : Lemma (requires validMove ms01 b0 b1 /\ validMove ms12 b1 b2) (ensures validMove (ms01 @ ms12) b0 b2) = 
-  match ms01 with
-  | [] -> ()
-  | (i,j)::ms -> lem_cat ms ms12 (pick i j b0) b1 b2
 
 
 (* Main idea 2: Self reduction *)
@@ -182,33 +182,21 @@ let rec pole_lt (n:nat) (p:pole) = match p with [] -> True | (d::p') -> d < n /\
 let board_lt (n:nat) (b:board) = let (x,y,r) = b in 
   pole_lt n x /\ pole_lt n y /\ pole_lt n r
 
-(* Appending tiles to some pile in the board *)
-let add_p d (b:board) = let (p,q,r) = b in (p @ [d], q, r)
-let add_r d (b:board) = let (p,q,r) = b in (p, q, r @ [d])
-
 (* Reduction lemma: if all the tiles are < n, then we can add n to the
    bottom of a pile, and the reduction still holds. *)
-let lem_addp' (n:nat) i j (b0:board {board_lt n b0}) :
-  Lemma (requires canPick b0 i j) (ensures pick i j (add_p n b0) == add_p n (pick i j b0)) = ()
-let lem_addr' (n:nat) i j (b0:board {board_lt n b0}) :
-  Lemma (requires canPick b0 i j) (ensures pick i j (add_r n b0) == add_r n (pick i j b0)) = ()
+let app_disc (d:disc) (b:board) (i:fin 3) = with_pole b ((nth_pole b i) @ [d]) i
+
+let lem_app' (i:fin 3) (j:fin 3) (k:fin 3) (n:nat) (b0:board {board_lt n b0}) : Lemma (requires canPick b0 i j) (ensures canPick (app_disc n b0 k) i j /\ pick i j (app_disc n b0 k) == app_disc n (pick i j b0) k) = ()
+
+let rec lem_app (ms:list move) (n:nat) (k:fin 3) (b0:board {board_lt n b0}) (b1:board {board_lt n b1}) : Lemma (requires validMove ms b0 b1) (ensures validMove ms (app_disc n b0 k) (app_disc n b1 k)) =
+  match ms with 
+  | [] -> ()
+  | (i,j)::ms' -> 
+    lem_app' i j k n b0; 
+    lem_app ms' n k (pick i j b0) b1
 
 
-let rec lem_addp (n:nat) (ms:list move) (b0:board {board_lt n b0}) (b1:board {board_lt n b1}):
-  Lemma (requires validMove ms b0 b1)
-        (ensures validMove ms (add_p n b0) (add_p n b1)) =
-    match ms with 
-    | [] -> ()
-    | (i,j)::ms' -> lem_addp' n i j b0; lem_addp n ms' (pick i j b0) b1
-let rec lem_addr (n:nat) (ms:list move) (b0:board {board_lt n b0}) (b1:board {board_lt n b1}):
-  Lemma (requires validMove ms b0 b1)
-        (ensures validMove ms (add_r n b0) (add_r n b1)) =
-    match ms with 
-    | [] -> ()
-    | (i,j)::ms' -> lem_addr' n i j b0; lem_addr n ms' (pick i j b0) b1
-
-
-(* Adding a tile preserves the pole bound *)
+(* Appending a tile preserves the pole bound *)
 let rec lem_n' (b:nat) (n:nat) (i:nat) : Lemma (ensures n + i <= b ==> pole_lt b (seq' n i)) (decreases n) = 
  match n with 
  | 0 -> () 
@@ -245,13 +233,13 @@ let rec hanoiMoves (n:nat) : (ms:list move {validMove ms (seq n, [], []) ([], []
     // assert (validMove ms12 b1 b2);
 
     // b0a to b2b
-    let b0p = add_p (n-1) b0 in
-    let b1p = add_p (n-1) b1 in
-    let b1r = add_r (n-1) b1 in
-    let b2r = add_r (n-1) b2 in
-    lem_addp (n-1) ms01 b0 b1;
+    let b0p = app_disc (n-1) b0 0 in
+    let b1p = app_disc (n-1) b1 0 in
+    let b1r = app_disc (n-1) b1 2 in
+    let b2r = app_disc (n-1) b2 2 in
+    lem_app ms01 (n-1) 0 b0 b1;
     // assert (validMove [(0,2)] b1p b1r);
-    lem_addr (n-1) ms12 b1 b2;
+    lem_app ms12 (n-1) 2 b1 b2;
     lem_cat [(0,2)] ms12 b1p b1r b2r;
     // assert (validMove ([(0,2)] @ ms12) b1p b2r);
     lem_cat ms01 ([(0,2)] @ ms12) b0p b1p b2r;
