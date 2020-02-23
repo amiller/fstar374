@@ -79,13 +79,14 @@ let with_pole (b:board) (x:pole) (i:fin 3) =
     match i with 0 -> (x,q,r) | 1 -> (p,x,r) | 2 -> (p,q,x)
 
 let canPick (b:board) (i: fin 3) (j: fin 3) = 
-    if i = j then False else
+    if i = j then True else
     let p = nth_pole b i in
     let q = nth_pole b j in
       match p with [] -> False
       | d::p' -> canAdd d p' /\ canAdd d q
 
 let pick i j (b:board{canPick b i j}) : board =
+  if i = j then b else
   let (d::p') = nth_pole b i in
   let q = nth_pole b j in
   with_pole (with_pole b p' i) (d::q) j
@@ -110,6 +111,7 @@ let lemValMove (i:fin 3) (j:fin 3) (b0:board) :
   | (1,2) -> ax3
   | (2,0) -> let (p, q, d::r) = b0 in lem_4 d p q r
   | (2,1) -> let (p, q, d::r) = b0 in lem_5 d p q r
+  | _ -> ax_re
 
 let rec lemValMoves ms b0 b1 : 
   Lemma (requires validMove ms b0 b1) 
@@ -119,6 +121,7 @@ let rec lemValMoves ms b0 b1 :
   | (i,j)::ms' -> lemValMove i j b0; 
                 lemValMoves ms' (pick i j b0) b1; 
                 lem_tr b0 (pick i j b0) b1
+
 
 (* Concatenation of moves *)
 let rec lem_cat ms01 ms12 b0 b1 b2 : Lemma (requires validMove ms01 b0 b1 /\ validMove ms12 b1 b2) (ensures validMove (ms01 @ ms12) b0 b2) = 
@@ -133,46 +136,47 @@ let rec lem_cat ms01 ms12 b0 b1 b2 : Lemma (requires validMove ms01 b0 b1 /\ val
 let mmap (f : fin 3 -> fin 3) (moves: list (fin 3 * fin 3)) = 
   map (fun (i,j) -> (f i, f j)) moves
 
-(* Cyclic shift 1 *)
-val shift_n (n:fin 3) : fin 3
-let shift_n = function
-  | 0 -> 1
+(* Swap P->Q for P->R *)
+val pqpr_n (n:fin 3) : fin 3
+let pqpr_n = function
+  | 0 -> 0
   | 1 -> 2
-  | 2 -> 0
+  | 2 -> 1
 
-let shift_b (b:board) : board = let (p,q,r) = b in (r,p,q)
+let pqpr_b (b:board) : board = let (p,q,r) = b in (p,r,q)
 
-let lemShift i j (b0:board) : Lemma (requires canPick b0 i j)
-  (ensures pick (shift_n i) (shift_n j) (shift_b b0) ==
-           shift_b (pick i j b0)) =
-  ()
+let lemPQPR i j (b0:board) : Lemma (requires canPick b0 i j)
+  (ensures canPick (pqpr_b b0) (pqpr_n i) (pqpr_n j) /\
+           pick (pqpr_n i) (pqpr_n j) (pqpr_b b0) ==
+           pqpr_b (pick i j b0)) = ()
 
-
-let rec lemShiftMap ms b0 b1 : Lemma (requires validMove ms (shift_b (shift_b b0)) (shift_b (shift_b b1)))
-  (ensures validMove (mmap shift_n ms) b0 b1) =
+let rec lemPQPRs ms b0 b1 : Lemma (requires validMove ms b0 b1)
+  (ensures validMove (mmap pqpr_n ms) (pqpr_b b0) (pqpr_b b1)) =
   match ms with 
   | [] -> ()
-  | (i,j)::ms' -> lemShift i j (shift_b (shift_b b0));
-                lemShiftMap ms' (shift_b (pick i j (shift_b (shift_b b0)))) b1
+  | (i,j)::ms' -> lemPQPR i j b0;
+                lemPQPRs ms' (pick i j b0) b1
 
-(* Swap first two *)
-val swap_n (n:fin 3) : fin 3
-let swap_n = function
+(* Swap Q->R for P->R *)
+val qrpr_n (n:fin 3) : fin 3
+let qrpr_n = function
   | 0 -> 1
   | 1 -> 0
   | 2 -> 2
-let swap_b (b:board) : board = let (p,q,r) = b in (q,p,r)
-let lemSwap i j (b0:board) : Lemma (requires canPick b0 i j)
-  (ensures canPick (shift_b b0) (shift_n i) (shift_n j)) =
-  ()
 
-let rec lemSwapMap ms b0 b1 : Lemma (requires validMove ms (swap_b b0) (swap_b b1))
-  (ensures validMove (mmap swap_n ms) b0 b1) =
+let qrpr_b (b:board) : board = let (p,q,r) = b in (q,p,r)
+
+let lemQRPR i j (b0:board) : Lemma (requires canPick b0 i j)
+  (ensures canPick (qrpr_b b0) (qrpr_n i) (qrpr_n j) /\
+           pick (qrpr_n i) (qrpr_n j) (qrpr_b b0) ==
+           qrpr_b (pick i j b0)) = ()
+
+let rec lemQRPRs ms b0 b1 : Lemma (requires validMove ms b0 b1)
+  (ensures validMove (mmap qrpr_n ms) (qrpr_b b0) (qrpr_b b1)) =
   match ms with 
   | [] -> ()
-  | (i,j)::ms' -> lemSwap i j (swap_b b0);
-                lemSwapMap ms' (swap_b (pick i j (swap_b b0))) b1
-
+  | (i,j)::ms' -> lemQRPR i j b0;
+                lemQRPRs ms' (pick i j b0) b1
 
 
 (* Main idea 2: Self reduction *)
@@ -221,15 +225,13 @@ let rec hanoiMoves (n:nat) : (ms:list move {validMove ms (seq n, [], []) ([], []
     let ms' = hanoiMoves (n-1) in
 
     // b0 to b1
-    let ms01a = mmap shift_n ms' in
-    lemShiftMap ms' b1 b0;
-    lemSwapMap (mmap shift_n ms') b0 b1;
-    let ms01 = mmap swap_n (mmap shift_n ms') in
+    let ms01 = mmap pqpr_n ms' in
+    lemPQPRs ms' (pqpr_b b0) b2;
     // assert (validMove ms01 b0 b1);
-
+    
     // b1 to b2
-    lemSwapMap ms' b1 (swap_b b2);
-    let ms12 = mmap swap_n ms' in
+    let ms12 = mmap qrpr_n ms' in
+    lemQRPRs ms' (pqpr_b b0) b2;
     // assert (validMove ms12 b1 b2);
 
     // b0a to b2b
