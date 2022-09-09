@@ -17,20 +17,21 @@ let rec length = function
     | Empty -> 0
     | Cons a x -> 1 + length x
 
+
+(* Evaluating is fun. You can select an expression, send it to the evaluator. (C-c,C-s,C-e)
+   Try selecting these:
+   - length string1
+   - length Empty
+   - (3 + length Empty = length string1)
+*)
+let string1 = Cons SymA (Cons SymB (Cons SymC Empty))
+
+
 (* Function definition of concatenation *)
 val concat : string -> string -> string
 let rec concat w v = match w with
     | Empty -> v
     | Cons a x -> Cons a (concat x v)
-    
-(* Lemma that concat is associative *)
-val concat_assoc : xs:string -> ys:string -> zs:string -> 
-    Lemma (concat (concat xs ys) zs = concat xs (concat ys zs))
-let rec concat_assoc xs ys zs =
-  match xs with
-  | Empty -> ()
-  | Cons a xs' -> concat_assoc xs' ys zs
-
 
 (* Function definition of reverse *)
 val reverse : string -> string
@@ -41,31 +42,37 @@ let rec reverse w = match w with
 (* revLem1: can be automatically discharged *)
 val revLem1 : a:symbol -> x:string -> 
     Lemma (reverse (Cons a x) = concat (reverse x) (Cons a Empty))
-let revLem1 a x = 
-    ()
+let revLem1 a x = ()
 
-(* Tips for playing with the proof checker:
-   Try using "assert", to check the boundaries of what the solver can figure out.
+
+(* Lemma that concat is associative.
+  This one you need to spell out the inductive proof. *)
+val concat_assoc : xs:string -> ys:string -> zs:string -> 
+    Lemma (concat (concat xs ys) zs = concat xs (concat ys zs))
+let rec concat_assoc xs ys zs =
+  match xs with
+  | Empty -> ()
+  | Cons a xs' -> concat_assoc xs' ys zs
+
+
+(* Now you need to start playing the game.
+
+  Tips for playing with the proof checker:
+   Try using "assert (x == y)" etc., to check the boundaries of what the solver can figure out.
    Use "let x = ... in" to bind new values, to help break down the problem.
-   Use "admit()" to quit and report OK 
-       (you're not finished until you've removed admit. *)
+   Use "admit()" to have the compiler move on to the next problem, accepting your word for now
+       (you're not truly finished with your proof work until you've removed all the admits. *)
 
 (* revLem2: need to provide an inductive proof *)
 val revLem2 : u:string -> Lemma (concat u Empty = u)
-let rec revLem2 u = match u with
-    | Empty -> ()
-    | Cons a x -> revLem2 x
+let revLem2 u = admit()
+
 
 (* Trickier lemma - you have to guide the proof search solver to the
    induction proof, and show it where to apply associativity *)
 val reverseLemma : u:string -> v:string -> 
     Lemma (reverse (concat u v) ==  concat (reverse v) (reverse u))
-let rec reverseLemma u v = 
-    match u with
-        | Empty -> revLem2 (reverse v)
-        | Cons a x -> reverseLemma x v;
-            concat_assoc (reverse v) (reverse x) (Cons a Empty);
-            ()
+let rec reverseLemma u v = admit()
 
 (* Some exercises from the book *)
 
@@ -119,7 +126,7 @@ let rec lem_ex10c w = match w with
                                   == reverse(swap x) ++ ab
                                   == reverse(ba ++ swap x)
                                   == reverse(swap(ab ++ x))
-           
+       This can be inserted as "assert" statements to check your progress.
         *)
        let s1 = swap (reverse w) in
 

@@ -39,3 +39,7 @@ Instructions for installing F* are found here:
 https://www.fstar-lang.org/#download
 
 The code here was developed in the [fstar-emacs](https://hub.docker.com/r/fstarlang/fstar-emacs) docker environment.
+
+I run it like:
+    ```
+    docker run -it -v $PWD:/home/build/fstar374 fstarlang/fstar-emacs bash
